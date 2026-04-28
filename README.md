@@ -55,8 +55,10 @@ print(documents[0].text)
 print(documents[0].metadata)
 ```
 ## Basic RAG Pipeline Example
+```bash
 pip install llama-index-llms-openai llama-index-embeddings-openai
 python3 examples/fpb_complaint_reader_basic_usage.py
+```
 ## Date Format
 
 Dates must use ISO format:
