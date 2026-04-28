@@ -9,7 +9,7 @@ description = "LlamaIndex readers for loading CFPB data as Document objects"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Alejandro Morales" }]
-license = { text = "MIT" }
+license = "MIT"
 
 dependencies = [
     "llama-index-core>=0.14.21",
