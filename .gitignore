@@ -17,6 +17,8 @@ build/
 dist/
 *.egg-info/
 .eggs/
+*.egg
+pip-wheel-metadata/
 
 # Testing / coverage
 .coverage
@@ -32,3 +34,18 @@ htmlcov/
 
 # Environment variables
 .env
+.env.*
+
+# Type checking / linting
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local data / vector DBs
+chroma_db/
+storage/
+data/
+*.sqlite
+*.db

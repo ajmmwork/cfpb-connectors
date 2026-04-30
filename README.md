@@ -1,37 +1,24 @@
 # CFPB Connectors
 
-A lightweight Python package for fetching Consumer Financial Protection Bureau (CFPB) data and converting it into LlamaIndex `Document` objects.
+A lightweight Python package for fetching Consumer Financial Protection Bureau (CFPB) complaint data and converting it into LlamaIndex `Document` objects.
 
 ## Overview
 
-`cfpb-connectors` provides reusable CFPB data connectors for retrieval-augmented generation (RAG), semantic search, data analysis pipelines, and LLM-powered applications.
+`cfpb-connectors` provides reusable CFPB data connectors for RAG, semantic search, data analysis pipelines, and LLM-powered applications.
 
 Currently supported:
 
 - CFPB consumer complaints
 
-Planned future connectors:
-
-- Mortgages
-- Credit cards
-- Loans
-- Additional CFPB datasets
-
 ## Installation
 
 ### Development install
-
-Use this while actively developing the package:
 
 ```bash
 pip install -e .
 ```
 
-The `-e` means editable install. Code changes update immediately without reinstalling.
-
 ### Future published install
-
-Once published to PyPI, users will install with:
 
 ```bash
 pip install cfpb-connectors
@@ -46,6 +33,7 @@ reader = CFPBComplaintReader(
     companies=["BANK OF AMERICA, NATIONAL ASSOCIATION"],
     start_date_YYYY_MM_DD="2025-01-01",
     end_date_YYYY_MM_DD="2025-01-31",
+    verbose=True,
 )
 
 documents = reader.load_data()
@@ -54,35 +42,98 @@ print(len(documents))
 print(documents[0].text)
 print(documents[0].metadata)
 ```
+
+## Optional Parameters and Defaults
+
+All parameters are optional.
+
+Default behavior:
+
+- If `companies` is missing → fetch all companies
+- If `start_date_YYYY_MM_DD` is missing → defaults to Jan 1 of current year
+- If `end_date_YYYY_MM_DD` is missing → defaults to today
+- If `verbose=True` → logs execution details
+
+Examples:
+
+```python
+# All companies, current year
+CFPBComplaintReader(verbose=True)
+
+# One company, default dates
+CFPBComplaintReader(
+    companies=["BANK OF AMERICA, NATIONAL ASSOCIATION"],
+    verbose=True
+)
+
+# All companies, custom date range
+CFPBComplaintReader(
+    start_date_YYYY_MM_DD="2025-01-01",
+    end_date_YYYY_MM_DD="2025-01-31",
+    verbose=True
+)
+
+# One company, missing end date
+CFPBComplaintReader(
+    companies=["BANK OF AMERICA, NATIONAL ASSOCIATION"],
+    start_date_YYYY_MM_DD="2025-01-01",
+    verbose=True
+)
+```
+
 ## Basic RAG Pipeline Example
+
+Install dependencies:
+
 ```bash
 pip install llama-index-llms-openai llama-index-embeddings-openai
-python3 examples/fpb_complaint_reader_basic_usage.py
 ```
-## Date Format
 
-Dates must use ISO format:
+Run example:
+
+```bash
+python3 -m examples.cfpb_complaint_all_parameters
+```
+
+### Batching (Recommended for Large Data)
+
+```python
+import time
+import logging
+from llama_index.core import VectorStoreIndex
+
+BATCH_SIZE = 100
+SLEEP_SECONDS = 1
+
+index = None
+total_batches = (len(documents) + BATCH_SIZE - 1) // BATCH_SIZE
+
+for i in range(0, len(documents), BATCH_SIZE):
+    batch = documents[i:i + BATCH_SIZE]
+    batch_num = (i // BATCH_SIZE) + 1
+
+    logging.info(f"Embedding batch {batch_num}/{total_batches}: {len(batch)} docs")
+
+    if index is None:
+        index = VectorStoreIndex.from_documents(batch, embed_model=embed_model)
+    else:
+        for doc in batch:
+            index.insert(doc)
+
+    time.sleep(SLEEP_SECONDS)
+```
+
+## Date Format
 
 ```text
 YYYY-MM-DD
 ```
 
-Example:
-
-```python
-start_date_YYYY_MM_DD="2025-01-01"
-end_date_YYYY_MM_DD="2025-01-31"
-```
-
 ## Document Structure
-
-Each CFPB complaint is converted into a LlamaIndex `Document`.
 
 ### Text
 
-The document text contains the complaint narrative, prefixed with basic context:
-
-```text
+```
 Company: BANK OF AMERICA, NATIONAL ASSOCIATION
 Product: Checking or savings account
 Issue: Managing an account
@@ -91,8 +142,6 @@ Issue: Managing an account
 ```
 
 ### Metadata
-
-Each document includes structured metadata:
 
 ```python
 {
@@ -118,50 +167,31 @@ Each document includes structured metadata:
 
 ## Error Handling
 
-The connector raises clear exceptions when:
+The connector raises errors when:
 
-- Required parameters are missing
-- Dates are invalid or incorrectly formatted
-- The start date is after the end date
-- The CFPB API request fails
-- The CFPB API returns an unexpected response
+- Dates are invalid
+- Start date > end date
+- API request fails
+- API response is malformed
 
 Example:
 
-```text
-ValueError: Invalid date '2025-13-01'. Expected format YYYY-MM-DD
 ```
-
-## Development
-
-Recommended project structure:
-
-```text
-cfpb-reader/
-├── README.md
-├── pyproject.toml
-├── src/
-│   └── cfpb/
-│       ├── __init__.py
-│       └── complaints/
-│           ├── __init__.py
-│           ├── reader.py
-│           └── utils.py
-└── tests/
+ValueError: Invalid date '2025-13-01'. Expected format YYYY-MM-DD
 ```
 
 ## Notes
 
-- Only complaints with consumer-provided narratives are returned.
-- This package currently depends on `llama-index-core` and `requests`.
+- Only complaints with narratives are returned
+- No embedding or batching is handled in this package
+- Those belong in the application layer
 
 ## Roadmap
 
-Potential future improvements:
-
-- Additional CFPB endpoint connectors
-- Additional complaint filters, such as product, issue, state, and ZIP code
+- More CFPB datasets
+- Additional filters (product, issue, state, ZIP)
 - PyPI publishing
+- LlamaHub integration
 
 ## License
 

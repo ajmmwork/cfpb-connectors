@@ -1,29 +1,13 @@
+from datetime import date
+import logging
 from llama_index.core.readers.base import BaseReader
 from llama_index.core.schema import Document
 from . import utils
 
+logger = logging.getLogger(__name__)
+
 
 class CFPBComplaintReader(BaseReader):
-    """
-    Reader for fetching CFPB (Consumer Financial Protection Bureau) complaint data.
-
-    This reader retrieves complaint narratives from the CFPB API for given companies
-    within a specified date range and converts them into LlamaIndex `Document` objects.
-
-    Each document contains:
-    - text: complaint narrative (optionally prefixed with company/product/issue)
-    - metadata: structured complaint attributes (company, product, issue, etc.)
-
-    Example:
-        reader = CFPBComplaintReader(
-            companies=["BANK OF AMERICA, NATIONAL ASSOCIATION"],
-            start_date_YYYY_MM_DD="2025-01-01",
-            end_date_YYYY_MM_DD="2025-01-31",
-        )
-
-        documents = reader.load_data()
-    """
-
     BASE_URL = "https://www.consumerfinance.gov/data-research/consumer-complaints/search/api/v1/"
     SORT = "created_date_asc"
     NO_AGGS = "false"
@@ -34,63 +18,38 @@ class CFPBComplaintReader(BaseReader):
 
     def __init__(
         self,
-        companies: list[str],
-        start_date_YYYY_MM_DD: str,
-        end_date_YYYY_MM_DD: str,
+        companies: list[str] | None = None,
+        start_date_YYYY_MM_DD: str | None = None,
+        end_date_YYYY_MM_DD: str | None = None,
+        verbose: bool = False,
     ):
-        """
-        Initialize the CFPBComplaintReader.
+        self.verbose = verbose
 
-        Args:
-            companies (list[str]):
-                List of company names to query (e.g., ["BANK OF AMERICA, NATIONAL ASSOCIATION"]).
+        today = date.today()
 
-            start_date_YYYY_MM_DD (str):
-                Start date (inclusive) in format YYYY-MM-DD.
+        if start_date_YYYY_MM_DD is None:
+            start_date_YYYY_MM_DD = f"{today.year}-01-01"
+            self._log(f"Using default start_date: {start_date_YYYY_MM_DD}")
 
-            end_date_YYYY_MM_DD (str):
-                End date (inclusive) in format YYYY-MM-DD.
-
-        Raises:
-            ValueError:
-                If required parameters are missing or date range is invalid.
-        """
-
-        missing = []
+        if end_date_YYYY_MM_DD is None:
+            end_date_YYYY_MM_DD = today.isoformat()
+            self._log(f"Using default end_date: {end_date_YYYY_MM_DD}")
 
         if not companies:
-            missing.append("companies")
-        if not start_date_YYYY_MM_DD:
-            missing.append("start_date_YYYY_MM_DD")
-        if not end_date_YYYY_MM_DD:
-            missing.append("end_date_YYYY_MM_DD")
+            self._log("No companies provided → fetching all companies")
 
-        if missing:
-            raise ValueError(f"Missing required parameters: {', '.join(missing)}")
-
-        self.companies = companies
+        self.companies = companies or []
         self.start_date = utils.validate_date(start_date_YYYY_MM_DD)
         self.end_date = utils.validate_date(end_date_YYYY_MM_DD)
 
         if self.start_date > self.end_date:
-            raise ValueError(
-                "start_date_YYYY_MM_DD must be before or equal to end_date_YYYY_MM_DD"
-            )
+            raise ValueError("start_date must be <= end_date")
+
+    def _log(self, message: str):
+        if self.verbose:
+            logger.info(message)
 
     def load_data(self) -> list[Document]:
-        """
-        Fetch complaint data from the CFPB API and convert it into Document objects.
-
-        Returns:
-            list[Document]:
-                A list of LlamaIndex Document objects containing complaint narratives
-                and associated metadata.
-
-        Raises:
-            RuntimeError:
-                If the API request fails or returns an invalid response.
-        """
-
         params = {
             "date_received_min": self.start_date,
             "date_received_max": self.end_date,
@@ -103,23 +62,40 @@ class CFPBComplaintReader(BaseReader):
         }
 
         results = []
-        for c in self.companies:
-            p = params.copy()
-            p["company"] = c.upper()
-            items = utils.make_request(self.BASE_URL, p)
+
+        if self.companies:
+            self._log(f"Fetching complaints for {len(self.companies)} company batch(es)")
+
+            for i, company in enumerate(self.companies, start=1):
+                p = params.copy()
+                p["company"] = company.upper()
+
+                self._log(f"Batch {i}/{len(self.companies)}: fetching company={company}")
+
+                items = utils.make_request(self.BASE_URL, p)
+                self._log(f"Batch {i}/{len(self.companies)} returned {len(items)} records")
+
+                results.extend(items)
+        else:
+            self._log("Batch 1/1: fetching complaints for ALL companies")
+
+            items = utils.make_request(self.BASE_URL, params)
+            self._log(f"Batch 1/1 returned {len(items)} records")
+
             results.extend(items)
 
         documents = []
+
         for res in results:
-            text = res.get("complaint_what_happened")
-            if not text:
+            complaint_text = res.get("complaint_what_happened")
+            if not complaint_text:
                 continue
 
             text = (
                 f"Company: {res.get('company')}\n"
                 f"Product: {res.get('product')}\n"
                 f"Issue: {res.get('issue')}\n\n"
-                f"{text}"
+                f"{complaint_text}"
             )
 
             metadata = {
@@ -149,5 +125,7 @@ class CFPBComplaintReader(BaseReader):
                     doc_id=str(res.get("complaint_id")),
                 )
             )
+
+        self._log(f"Converted {len(documents)} records into LlamaIndex documents")
 
         return documents
